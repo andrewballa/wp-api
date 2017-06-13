@@ -1,0 +1,145 @@
+<p id="test"></p>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/1.7.2/jquery.min.js" type="text/javascript"></script>
+
+<script type="text/javascript">
+	var allMedia = [];
+	var allPosts = [];
+
+	var d = new Date();
+	var lastYear = new Date(d.getFullYear() - 1, d.getMonth(), d.getDate(), d.getHours(), d.getMinutes(), d.getMilliseconds());
+
+	var categoryIdList = "564,680";
+	var tagIdList = "36,672";
+
+    $(document).ready(function () {
+
+        if (0 !== categoryIdList.length || 0 !== tagIdList.length) {
+            runPostsQuerying();
+            runMediaQuerying();
+        }
+
+        //Go to https://developer.wordpress.org/rest-api/ for reference.
+        function runPostsQuerying() {
+            if (0 !== categoryIdList.length) {
+                countCategoryPages();
+            }
+
+            if (0 !== tagIdList.length) {
+                countTagPages();
+            }
+        }
+
+        function countCategoryPages() {
+            var paramQuery = "categories=" + categoryIdList;
+            $.ajax({
+                method: "get",
+                url: "https://www.digi.com/blog/wp-json/wp/v2/posts?" + paramQuery + "&after=" + lastYear.toISOString(),
+                success: function (response, status, xhr) {
+                    var pages = Math.ceil(xhr.getResponseHeader("x-wp-total") / 100);
+
+                    getPosts(paramQuery, pages);
+                },
+                error: function () {
+                    console.log(status);
+                }
+            });
+        }
+
+        function countTagPages() {
+            var paramQuery = "tags=" + tagIdList;
+            $.ajax({
+                method: "get",
+                url: "https://www.digi.com/blog/wp-json/wp/v2/posts?" + paramQuery + "&after=" + lastYear.toISOString(),
+                success: function (response, status, xhr) {
+                    var pages = Math.ceil(xhr.getResponseHeader("x-wp-total") / 100);
+
+                    getPosts(paramQuery, pages);
+                },
+                error: function () {
+                    console.log(status);
+                }
+            });
+        }
+
+        function getPosts(paramQuery, pages) {
+
+            for (var i = 1; i <= pages; i++) {
+                $.ajax({
+                    method: "get",
+                    url: "https://www.digi.com/blog/wp-json/wp/v2/posts?per_page=100&" + paramQuery + "&page=" + i + "&after=" + lastYear.toISOString(),
+                    success: function (response, status, xhr) {
+
+                        response.forEach(function (post) {
+                            if (allPosts.find((p) => p["id"] == post["id"]) == null) {
+                                allPosts.push(post);
+                            }
+                        }, this);
+                        //allPosts.push.apply(allPosts, response);
+                    },
+                    error: function () {
+                        console.log(status);
+                    }
+                });
+            }
+        }
+
+
+
+        function runMediaQuerying() {
+            $.ajax({
+                method: "get",
+                crossDomain: true,
+                url: "https://www.digi.com/blog/wp-json/wp/v2/media?after=" + lastYear.toISOString(),
+                success: function (response, status, xhr) {
+                    var pages = Math.ceil(xhr.getResponseHeader("x-wp-total") / 100);
+                    getMedia(pages);
+                },
+                error: function (err) {
+                    console.log(err);
+                }
+            });
+        }
+
+        function getMedia(pages) {
+            for (var i = 1; i <= pages; i++) {
+                $.ajax({
+                    method: "get",
+                    crossDomain: true,
+                    url: "https://www.digi.com/blog/wp-json/wp/v2/media?per_page=100&page=" + i + "&after=" + lastYear.toISOString(),
+                    success: function (response, status, xhr) {
+                        allMedia.push.apply(allMedia, response);
+                    },
+                    error: function (err) {
+                        console.log(err);
+                    }
+                });
+            }
+        }
+
+
+    });
+
+	$(document).ajaxStop(function () {
+
+		function addMediaUrls() {
+			allPosts.forEach(function (post, index) {
+				var media_id = post["featured_media"];
+				if (media_id != null && media_id != 0) {
+					var media = allMedia.find((m) => m["id"] == media_id);
+					if (media != null) {
+						post["custom_imageUrl"] = media["source_url"]
+					}
+					else { post["custom_imageUrl"] = "null" }
+				}
+				else { post["custom_imageUrl"] = "null" }
+			});
+		}
+
+		addMediaUrls();
+
+		allPosts = allPosts.sort(function (a, b) { return new Date(b["date"]) - new Date(a["date"]) })
+		console.log(allPosts.map(function(p){return p["title"]["rendered"]}));
+		console.log(JSON.stringify(allPosts,null,2));
+	})
+
+</script>
