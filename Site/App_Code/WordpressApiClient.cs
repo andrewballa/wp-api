@@ -27,12 +27,12 @@ namespace WordpressApiClient
         public int id { get; set; }
         public string source_url { get; set; }
     }
-    
+
     public class ApiClient
     {
         private static HttpClient client;
         static string lastYear = "";
-        
+
         public static async Task<string> CallWordPressApi(string categories, string tags)
         {
             client = new HttpClient();
@@ -41,7 +41,12 @@ namespace WordpressApiClient
             client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
 
             lastYear = DateTime.Now.AddYears(-1).ToString("o");
+            
+            return await ProcessBlogPosts(categories, tags);
+        }
 
+        public static async Task<string> ProcessBlogPosts(string categories, string tags)
+        {
 
             List<WPBlogPosts> allPosts = await RunPostsQuerying(categories, tags);
             List<WPMedia> allMedia = await RunMediaQuerying();
@@ -67,7 +72,6 @@ namespace WordpressApiClient
             return JsonConvert.SerializeObject(new { error = "something went wrong" });
         }
 
-
         public static async Task<List<WPBlogPosts>> RunPostsQuerying(string categories, string tags)
         {
             var allPosts = new List<WPBlogPosts>();
@@ -81,7 +85,7 @@ namespace WordpressApiClient
                 {
                     foreach (WPBlogPosts p in cp)
                     {
-                        if(allPosts.Find(x=> x.id == p.id) == null) { allPosts.Add(p); }
+                        if (allPosts.Find(x => x.id == p.id) == null) { allPosts.Add(p); }
                     }
                     //allPosts.AddRange(cp);
                 }
