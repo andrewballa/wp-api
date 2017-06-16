@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using System.Net.Http;
 using Newtonsoft.Json;
@@ -35,37 +36,56 @@ namespace WordpressApiClient
 
         public static async Task<string> CallWordPressApi(string categories, string tags)
         {
+            // WebRequest.DefaultWebProxy = new WebProxy("127.0.0.1", 8888);
+
             client = new HttpClient();
             client.BaseAddress = new Uri("https://www.digi.com/blog/wp-json/wp/v2/");
             client.DefaultRequestHeaders.Accept.Clear();
             client.DefaultRequestHeaders.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
-
             lastYear = DateTime.Now.AddYears(-1).ToString("o");
-            
+
+            //// ## SERVER-SIDE CACHING FOR QA. NOT NEEDED ON PRODCUTION SINCE CDN CACHES CONTENT THERE ##
+            //var host = System.Web.HttpContext.Current.Request.Url.Host;
+            //if (host == "www-qa.digi.com") // || host=="172.16.1.135" || host=="172.16.1.136"
+            //{
+            //    //Get the JSON results and cache them for 24 hours, based on the key (which is a querystring) provided to CacheSettings.
+            //    //If the key changes(i.e. if the parameters for the API call change), then cache is reset, and data is obtained again.
+            //    var cacheSettings = new CacheSettings(1440, string.Format("wpCacheParam|category={0}&tag={1}", categories, tags)) { AllowProgressiveCaching = true };
+            //    var getBlotPosts = CacheHelper.Cache(cs => ProcessBlogPosts(categories, tags), cacheSettings);
+            //    return await getBlotPosts;
+            //}
+            ////For Prod, just run the method normally
+
+            //CookieHelper.SetValue("isdigiuser", "test", DateTime.Now.AddYears(1));
+
             return await ProcessBlogPosts(categories, tags);
         }
 
         public static async Task<string> ProcessBlogPosts(string categories, string tags)
         {
+            List<WPBlogPosts> allPosts = new List<WPBlogPosts>();
+            List<WPMedia> allMedia = new List<WPMedia>();
+            allPosts = await RunPostsQuerying(categories, tags);
 
-            List<WPBlogPosts> allPosts = await RunPostsQuerying(categories, tags);
-            List<WPMedia> allMedia = await RunMediaQuerying();
-
-            if (allMedia != null && allPosts != null)
+            if (allPosts != null && allPosts.Count != 0)
             {
-                foreach (var post in allPosts)
+                allMedia = await RunMediaQuerying();
+                if (allMedia != null)
                 {
-                    if (post.featured_media != 0 && post.featured_media != null)
+                    foreach (var post in allPosts)
                     {
-                        var media = allMedia.Find(x => x.id == post.featured_media); //.FirstOrDefault(x => x.id == post.featured_media);
-                        post.custom_imageUrl = media.source_url;
+                        if (post.featured_media != 0 && post.featured_media != null)
+                        {
+                            var media = allMedia.Find(x => x.id == post.featured_media); //.FirstOrDefault(x => x.id == post.featured_media);
+                            post.custom_imageUrl = media.source_url;
+                        }
+                        else
+                        {
+                            post.custom_imageUrl = "null";
+                        }
                     }
-                    else
-                    {
-                        post.custom_imageUrl = "null";
-                    }
+                    return JsonConvert.SerializeObject(allPosts);
                 }
-                return JsonConvert.SerializeObject(allPosts);
             }
 
             //something went wrong in the Wordpress API retrieval. 
@@ -80,14 +100,19 @@ namespace WordpressApiClient
             {
                 var cparam = "categories=" + categories;
                 var cCount = await CountPages("posts?" + cparam + "&after=" + lastYear);
-                var cp = await GetBlogPostsAsync(cparam, cCount);
-                if (cp != null)
+                if (cCount != 0)
                 {
-                    foreach (WPBlogPosts p in cp)
+                    var cp = await GetBlogPostsAsync(cparam, cCount);
+                    if (cp != null)
                     {
-                        if (allPosts.Find(x => x.id == p.id) == null) { allPosts.Add(p); }
+                        foreach (WPBlogPosts p in cp)
+                        {
+                            if (allPosts.Find(x => x.id == p.id) == null)
+                            {
+                                allPosts.Add(p);
+                            }
+                        }
                     }
-                    //allPosts.AddRange(cp);
                 }
             }
 
@@ -95,14 +120,19 @@ namespace WordpressApiClient
             {
                 var tparam = "tags=" + tags;
                 var tCount = await CountPages("posts?" + tparam + "&after=" + lastYear);
-                var tp = await GetBlogPostsAsync(tparam, tCount);
-                if (tp != null)
+                if (tCount != 0)
                 {
-                    foreach (WPBlogPosts p in tp)
+                    var tp = await GetBlogPostsAsync(tparam, tCount);
+                    if (tp != null)
                     {
-                        if (allPosts.Find(x => x.id == p.id) == null) { allPosts.Add(p); }
+                        foreach (WPBlogPosts p in tp)
+                        {
+                            if (allPosts.Find(x => x.id == p.id) == null)
+                            {
+                                allPosts.Add(p);
+                            }
+                        }
                     }
-                    //allPosts.AddRange(tp);
                 }
             }
 
@@ -181,7 +211,6 @@ namespace WordpressApiClient
             }
             return pagesToIterate;
         }
-
 
 
     }

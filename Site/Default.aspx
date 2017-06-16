@@ -18,14 +18,18 @@
 
 <script>
     $(document).ready(function () {
-        var queries = "categories=564,680&tags=36,672";
-        $.ajax({
-            method: "get",
-            url: "/customapi/wordpress",
-            contentType: "application/json",
-            data: queries
-        }).done(function (response) {
-            console.log(response);
-        });
+        var cats = "", tags = "805";
+
+        if (0 !== cats.length || 0 !== tags.length) {
+            var queries = "categories=" + cats + "&tags=" + tags;
+            $.ajax({
+                method: "get",
+                url: "/customapi/wordpress",
+                contentType: "application/json",
+                data: queries
+            }).done(function(response) {
+                console.log(response);
+            });
+        }
     })
 </script>
