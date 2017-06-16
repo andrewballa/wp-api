@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using Newtonsoft.Json;
 
 namespace WordpressApiClient
@@ -32,7 +33,9 @@ namespace WordpressApiClient
     public class ApiClient
     {
         private static HttpClient client;
-        static string lastYear = "";
+        private static string lastYear = "";
+        private static int allPostsCount;
+        private static int allMediaCount;
 
         public static async Task<string> CallWordPressApi(string categories, string tags)
         {
@@ -65,18 +68,27 @@ namespace WordpressApiClient
         {
             List<WPBlogPosts> allPosts = new List<WPBlogPosts>();
             List<WPMedia> allMedia = new List<WPMedia>();
-            allPosts = await RunPostsQuerying(categories, tags);
 
-            if (allPosts != null && allPosts.Count != 0)
+            if (categories != null)
             {
-                allMedia = await RunMediaQuerying();
-                if (allMedia != null)
+                allPosts.AddRange(await RunPostsQuerying("categories=" + categories));
+            }
+
+            if (tags != null)
+            {
+                allPosts.AddRange(await RunPostsQuerying("tags=" + tags));
+            }
+
+            if (allPosts.Count > 0)
+            {
+                allMedia =  await RunMediaQuerying();
+                if (allMedia.Count > 0)
                 {
                     foreach (var post in allPosts)
                     {
                         if (post.featured_media != 0 && post.featured_media != null)
                         {
-                            var media = allMedia.Find(x => x.id == post.featured_media); //.FirstOrDefault(x => x.id == post.featured_media);
+                            var media = allMedia.Find(x => x.id == post.featured_media);
                             post.custom_imageUrl = media.source_url;
                         }
                         else
@@ -92,124 +104,121 @@ namespace WordpressApiClient
             return JsonConvert.SerializeObject(new { error = "something went wrong" });
         }
 
-        public static async Task<List<WPBlogPosts>> RunPostsQuerying(string categories, string tags)
+        public static async Task<List<WPBlogPosts>> RunPostsQuerying(string param)
         {
             var allPosts = new List<WPBlogPosts>();
-
-            if (categories != null)
+            var firstPostsArray = await GetBlogPostsAsync(param, 1, 1);
+            if (firstPostsArray.Count > 0)
             {
-                var cparam = "categories=" + categories;
-                var cCount = await CountPages("posts?" + cparam + "&after=" + lastYear);
-                if (cCount != 0)
+                foreach (WPBlogPosts p in firstPostsArray)
                 {
-                    var cp = await GetBlogPostsAsync(cparam, cCount);
-                    if (cp != null)
+                    if (allPosts.Find(x => x.id == p.id) == null) { allPosts.Add(p); }
+                }
+
+                if (allPostsCount > 1)
+                {
+                    var restOfPostsArray = await GetBlogPostsAsync(param, 2, allPostsCount);
+                    if (restOfPostsArray != null)
                     {
-                        foreach (WPBlogPosts p in cp)
+                        foreach (WPBlogPosts p in restOfPostsArray)
                         {
-                            if (allPosts.Find(x => x.id == p.id) == null)
-                            {
-                                allPosts.Add(p);
-                            }
+                            if (allPosts.Find(x => x.id == p.id) == null) { allPosts.Add(p); }
                         }
                     }
                 }
             }
-
-            if (tags != null)
-            {
-                var tparam = "tags=" + tags;
-                var tCount = await CountPages("posts?" + tparam + "&after=" + lastYear);
-                if (tCount != 0)
-                {
-                    var tp = await GetBlogPostsAsync(tparam, tCount);
-                    if (tp != null)
-                    {
-                        foreach (WPBlogPosts p in tp)
-                        {
-                            if (allPosts.Find(x => x.id == p.id) == null)
-                            {
-                                allPosts.Add(p);
-                            }
-                        }
-                    }
-                }
-            }
-
             return allPosts;
         }
 
-        public static async Task<List<WPMedia>> RunMediaQuerying()
-        {
-            var mCount = await CountPages("media?after=" + lastYear);
-            if (mCount != 0)
-            {
-                return await GetMediaAsync(mCount);
-            }
-            //something went wrong, return null
-            return null;
-        }
-
-        private static async Task<List<WPBlogPosts>> GetBlogPostsAsync(string param, int pages)
+        private static async Task<List<WPBlogPosts>> GetBlogPostsAsync(string param,int startCount, int iterationCount)
         {
             var allPosts = new List<WPBlogPosts>();
             try
             {
-                for (int i = 1; i <= pages; i++)
+                //for (int i = startCount; i > iterationCount; --i)
+                for (int i = startCount; i <= iterationCount; i++)
                 {
-                    var path = string.Format("posts?per_page=100&{0}&page={1}&after={2}", param, i, lastYear);
+                    var path = string.Format("posts?per_page=100&{0}&page={1}&after={2}", param, i, lastYear); //      
                     var response = await client.GetAsync(path);
                     response.EnsureSuccessStatusCode();
                     allPosts.AddRange(await response.Content.ReadAsAsync<List<WPBlogPosts>>());
+                    if (startCount == 1)
+                    {
+                        allPostsCount = GetPageCount(response.Headers);
+                    }
                 }
             }
-            catch (Exception)
+            catch
             {
-                allPosts = null;
+                return null;
             }
+
             return allPosts;
         }
+        
+        public static async Task<List<WPMedia>> RunMediaQuerying()
+        {
+            var allMedia = new List<WPMedia>();
+            var firstMediaArray = await GetMediaAsync(1, 1);
+            if (firstMediaArray.Count > 0)
+            {
+                foreach (var m in firstMediaArray)
+                {
+                    if (allMedia.Find(x => x.id == m.id) == null) { allMedia.Add(m); }
+                }
 
-        private static async Task<List<WPMedia>> GetMediaAsync(int pages)
+                if (allMediaCount > 1)
+                {
+                    var restOfMediaArray = await GetMediaAsync(2, allMediaCount);
+                    if (restOfMediaArray != null)
+                    {
+                        foreach (var m in restOfMediaArray)
+                        {
+                            if (allMedia.Find(x => x.id == m.id) == null) { allMedia.Add(m); }
+                        }
+                    }
+                }
+            }
+            return allMedia;
+        }
+
+        private static async Task<List<WPMedia>> GetMediaAsync(int startCount, int iterationCount)
         {
             var allMedia = new List<WPMedia>();
             try
             {
-                for (int i = 1; i <= pages; i++)
+                for (int i = startCount; i <= iterationCount; i++)
                 {
                     var path = string.Format("media?per_page=100&page={0}&after={1}", i, lastYear);
                     var response = client.GetAsync(path).Result;
                     response.EnsureSuccessStatusCode();
                     allMedia.AddRange(await response.Content.ReadAsAsync<List<WPMedia>>());
+                    if (startCount == 1)
+                    {
+                        allMediaCount = GetPageCount(response.Headers);
+                    }
                 }
             }
             catch
             {
-                allMedia = null;
+                return null;
             }
             return allMedia;
         }
 
-        public static async Task<int> CountPages(string path)
+        public static int GetPageCount(HttpResponseHeaders header)
         {
-            double totalPages = 0;
-            int pagesToIterate;
+            int totalPages = 0;
             try
             {
-                var response = await client.GetAsync(path);
-                response.EnsureSuccessStatusCode();
                 IEnumerable<string> values;
-                if (response.Headers.TryGetValues("x-wp-total", out values))
+                if (header.TryGetValues("x-wp-totalpages", out values))
                 {
-                    totalPages = Convert.ToDouble(values.First());
+                    totalPages = Convert.ToInt32(values.First());
                 }
-                pagesToIterate = (int)Math.Ceiling(totalPages / 100);
             }
-            catch (Exception ex)
-            {
-                pagesToIterate = 0;
-            }
-            return pagesToIterate;
+            catch { }
+            return totalPages;
         }
 
 

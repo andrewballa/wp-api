@@ -18,7 +18,7 @@
 
 <script>
     $(document).ready(function () {
-        var cats = "", tags = "805";
+        var cats = "564", tags = "805";
 
         if (0 !== cats.length || 0 !== tags.length) {
             var queries = "categories=" + cats + "&tags=" + tags;
